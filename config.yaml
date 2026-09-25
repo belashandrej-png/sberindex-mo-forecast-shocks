@@ -1,0 +1,6 @@
+project:
+  name: sberindex-mo-forecast-shocks
+  seed: 42
+model:
+  name: lightgbm
+  objective: mae
