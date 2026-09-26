@@ -1,0 +1,7 @@
+event,type,impact,true_lead,CAR_3m,sign_match
+2024-03,regime_up,0.29,1,0.148,True
+2024-04,noise,-0.01,0,0.148,False
+2024-06,spike,0.17,2,0.117,True
+2024-10,noise,-0.03,0,0.04,True
+2024-10,noise,0.01,0,0.04,True
+2024-12,noise,-0.01,0,,вне окна данных
