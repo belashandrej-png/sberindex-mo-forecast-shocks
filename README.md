@@ -9,7 +9,7 @@
 
 **Требования:** Python 3.10+, ~4 ГБ RAM (CPU достаточно; GPU опционален для Chronos).
 
-### Шаг 1. Зависимости
+###Шаг 1. Зависимости
 ```bash
 pip install -r requirements.txt
 
