@@ -1,0 +1,3 @@
+model,test_MAE_log,test_MAE_exp,delta_pct
+LightGBM baseline,0.15101580138186232,0.16301503518131058,0.0
+LightGBM + news_score,0.15101580138186232,0.16301503518131058,0.0
