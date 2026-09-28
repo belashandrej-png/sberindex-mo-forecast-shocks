@@ -17,8 +17,8 @@ data:
   category: "Все категории"
   date_format: "YYYY-MM"
   min_months_per_mo: 24          # МО с полной историей
-  reference_municipalities: null  # справочник МО (опционально)
-
+  reference_municipalities: null
+  
 # --- Панель и выборка МО ---
 panel:
   n_sample: 300                  # стратифицированная выборка
@@ -60,7 +60,7 @@ features:
 # --- Модель LightGBM ---
 model:
   name: "lightgbm"
-  objective: "mae"               # MAE как обязательная метрика конкурса
+  objective: "mae"
   metric: "mae"
   n_estimators: 600
   learning_rate: 0.05
@@ -72,7 +72,7 @@ model:
   reg_lambda: 0.0
   random_state: 42
   verbose: -1
-  early_stopping_rounds: null    # не используется (малая выборка)
+  early_stopping_rounds: null
 
 # --- Базовая модель (Prophet) ---
 baseline:
