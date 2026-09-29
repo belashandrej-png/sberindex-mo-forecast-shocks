@@ -1604,6 +1604,163 @@ for f in arts:
     if os.path.exists('/content/'+f): shutil.copy('/content/'+f, '/content/submission/figures/'+f)
 shutil.make_archive('/content/submission_artifacts', 'zip', '/content/submission')
 
+
+import pyarrow.parquet as pq
+
+BDMO_WORK = '/content/BDMO_work'
+
+if os.path.isdir(BDMO_WORK):
+    print(" БЛОК 15: ЭКСПЕРИМЕНТ С БДПМО (Росстат)")
+    
+    # Маппинг territory_id -> oktmo_8 (первые 8 цифр)
+    muni_path = '/content/municipalities/t_dict_municipal_districts.xlsx'
+    if not os.path.exists(muni_path):
+        # fallback — попробовать распаковать
+        import subprocess
+        subprocess.run(['apt-get', 'install', '-y', '-qq', 'unrar'], capture_output=True)
+        os.makedirs('/content/municipalities', exist_ok=True)
+        subprocess.run(['unrar', 'x', '-o+', '/content/t_dict_municipal.rar',
+                        '/content/municipalities/'], capture_output=True)
+    
+    muni = pd.read_excel(muni_path)
+    tid_to_oktmo8 = {}
+    for _, row in muni.iterrows():
+        o = str(row['oktmo']).replace('-', '').strip()
+        if o and o != 'nan' and len(o) >= 8:
+            tid_to_oktmo8[row['territory_id']] = o[:8]
+    oktmo8_to_mo = {v: k for k, v in tid_to_oktmo8.items()}
+    sample8 = {tid_to_oktmo8[mo] for mo in sample_mos if mo in tid_to_oktmo8}
+    print(f"ОКТМО-8 в выборке: {len(sample8)}/{len(sample_mos)} МО")
+    
+    # 4 раздела БДПМО
+    sections = {
+        's1':  f'{BDMO_WORK}/section1/data_section1_112_v20250918.parquet',
+        's2':  f'{BDMO_WORK}/section2/data_section2_112_v20250918.parquet',
+        's16': f'{BDMO_WORK}/section16/data_section16_112_v20250918.parquet',
+        's18': f'{BDMO_WORK}/section18/data_section18_112_v20250918.parquet',
+    }
+    bdmo_by_mo = {mo: {} for mo in sample_mos}
+    
+    for name, path in sections.items():
+        if not os.path.exists(path):
+            print(f"Нет {name}: не найден"); continue
+        
+        schema = pq.read_schema(path)
+        cols = [c for c in ['oktmo','year','indicator_code',
+                            'indicator_value','mun_level']
+                if c in schema.names]
+        df = pd.read_parquet(path, columns=cols)
+        n0 = len(df)
+        
+        # Фильтр по нашим ОКТМО-8
+        df = df[df['oktmo'].isin(sample8)]
+        
+        # Фильтр верхнего уровня
+        if 'mun_level' in df.columns:
+            top_lvl = [x for x in df['mun_level'].unique() if 'верхнего' in str(x)]
+            if top_lvl: df = df[df['mun_level'] == top_lvl[0]]
+        
+        # Последний год по каждому индикатору
+        yr_by_ind = df.groupby('indicator_code')['year'].max()
+        df = df.merge(yr_by_ind.rename('_mx'), left_on='indicator_code', right_index=True)
+        df = df[df['year'] == df['_mx']].drop(columns=['_mx'])
+        
+        # Топ-10 индикаторов по покрытию
+        cov = df.groupby('indicator_code')['indicator_value'].count()
+        top = cov[cov >= 0.3 * len(sample8)].index.tolist()[:10]
+        if not top:
+            print(f"   {name}: мало данных"); continue
+        
+        wide = df[df['indicator_code'].isin(top)].pivot_table(
+            index='oktmo', columns='indicator_code',
+            values='indicator_value', aggfunc='first')
+        
+        matched = 0
+        for oktmo8, row in wide.iterrows():
+            mo = oktmo8_to_mo.get(str(oktmo8))
+            if mo is None: continue
+            for col in wide.columns:
+                if pd.notna(row[col]):
+                    bdmo_by_mo[mo][f'{name}_{col}'] = float(row[col])
+            matched += 1
+        
+        print(f"   {name}: {n0:,} → {len(df):,} строк | индикаторов: {len(top)} | "
+              f"МО: {matched}/{len(sample8)}")
+        del df, wide; gc.collect()
+    
+    # A/B тест: baseline vs +БДПМО
+    def featurize_with_bdmo(t, j):
+        f = featurize(t, j)
+        for k, v in bdmo_by_mo.get(mos[j], {}).items():
+            f[f'bdmo_{k}'] = v
+        return f
+    
+    FC_BDMO = list(featurize_with_bdmo(T-1, 0).keys())
+    
+    h_ab = 6
+    C_ab = T - 1 - h_ab
+    rows_A, rows_B, ys = [], [], []
+    for mo in sample_mos:
+        j = pos[mo]
+        for t in range(13, C_ab + 1):
+            rows_A.append(featurize(t, j))
+            rows_B.append(featurize_with_bdmo(t, j))
+            ys.append(np.log1p(Yv[t, j]))
+    
+    X_A = pd.DataFrame(rows_A).reindex(columns=FC)
+    X_B = pd.DataFrame(rows_B).reindex(columns=FC_BDMO)
+    y = np.array(ys)
+    
+    rows_A_te, rows_B_te, ys_te = [], [], []
+    for mo in sample_mos:
+        j = pos[mo]
+        for t in range(C_ab + 1, T):
+            rows_A_te.append(featurize(t, j))
+            rows_B_te.append(featurize_with_bdmo(t, j))
+            ys_te.append(np.log1p(Yv[t, j]))
+    X_A_te = pd.DataFrame(rows_A_te).reindex(columns=FC)
+    X_B_te = pd.DataFrame(rows_B_te).reindex(columns=FC_BDMO)
+    y_te = np.array(ys_te)
+    
+    print(f"   Train: {X_A.shape}, Test: {X_A_te.shape}, "
+          f"БДПМО-признаков: {len(FC_BDMO) - len(FC)}")
+    
+    params = dict(objective='mae', n_estimators=600, learning_rate=0.05,
+                  num_leaves=63, random_state=42, verbose=-1)
+    m_A = lgb.LGBMRegressor(**params).fit(X_A, y)
+    m_B = lgb.LGBMRegressor(**params).fit(X_B, y)
+    
+    mae_A = np.mean(np.abs(y_te - m_A.predict(X_A_te)))
+    mae_B = np.mean(np.abs(y_te - m_B.predict(X_B_te)))
+    delta_pct = (mae_B - mae_A) / mae_A * 100
+    
+    imp = m_B.feature_importances_
+    bdmo_cols = [c for c in FC_BDMO if c.startswith('bdmo_')]
+    bvals = imp[[FC_BDMO.index(c) for c in bdmo_cols]]
+    share = bvals.sum() / imp.sum() * 100
+    
+    ab_result = pd.DataFrame({
+        'model': ['LightGBM baseline', 'LightGBM + БДПМО'],
+        'test_MAE_log': [mae_A, mae_B],
+        'test_MAE_exp': [np.expm1(mae_A), np.expm1(mae_B)],
+        'delta_pct': [0.0, delta_pct]
+    })
+    ab_result.to_csv('results_final/ab_test_bdmo.csv', index=False)
+    
+    print("\n РЕЗУЛЬТАТ:")
+    print(ab_result.round(4).to_string(index=False))
+    print(f" Важность БДПМО: {share:.2f}%")
+    print(f" MAE: {delta_pct:+.2f}%  (ожидаемо: +2.22%)")
+    
+    # Сохраняем признаки
+    bdmo_df = pd.DataFrame.from_dict(bdmo_by_mo, orient='index')
+    bdmo_df.index.name = 'territory_id'
+    bdmo_df = bdmo_df.reset_index()
+    bdmo_df.to_parquet('results_final/bdmo_features.parquet', index=False)
+    print(f" Сохранено: results_final/ab_test_bdmo.csv, bdmo_features.parquet")
+else:
+    print(" БДПМО не распакован (см. data/README.md), пропускаем блок")
+
 import os
 
 dirs = [
