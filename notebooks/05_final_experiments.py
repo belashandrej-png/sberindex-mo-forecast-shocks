@@ -2725,6 +2725,111 @@ pd.DataFrame([{'config': k, 'n_shocks': v} for k, v in configs.items()]
 print("ablation_detectors.csv")
 print(configs)
 
+# ЭКСПЕРИМЕНТ С БДПМО (Росстат)
+
+import pickle, gc
+import pyarrow.parquet as pq
+
+BDMO_WORK = '/content/BDMO_work'  # распакованные разделы БДПМО
+
+if os.path.isdir(BDMO_WORK):
+    print(" БДПМО-эксперимент")
+    
+    # Маппинг territory_id -> oktmo_8
+    muni = pd.read_excel('/content/municipalities/t_dict_municipal_districts.xlsx')
+    tid_to_oktmo8 = {}
+    for _, row in muni.iterrows():
+        o = str(row['oktmo']).replace('-', '').strip()
+        if o and o != 'nan' and len(o) >= 8:
+            tid_to_oktmo8[row['territory_id']] = o[:8]
+    oktmo8_to_mo = {v: k for k, v in tid_to_oktmo8.items()}
+    sample8 = {tid_to_oktmo8[mo] for mo in sample_mos if mo in tid_to_oktmo8}
+    
+    sections = {
+        's1':  f'{BDMO_WORK}/section1/data_section1_112_v20250918.parquet',
+        's2':  f'{BDMO_WORK}/section2/data_section2_112_v20250918.parquet',
+        's16': f'{BDMO_WORK}/section16/data_section16_112_v20250918.parquet',
+        's18': f'{BDMO_WORK}/section18/data_section18_112_v20250918.parquet',
+    }
+    bdmo_by_mo = {mo: {} for mo in sample_mos}
+    
+    for name, path in sections.items():
+        if not os.path.exists(path): continue
+        schema = pq.read_schema(path)
+        cols = [c for c in ['oktmo','year','indicator_code','indicator_value','mun_level']
+                if c in schema.names]
+        df = pd.read_parquet(path, columns=cols)
+        df = df[df['oktmo'].isin(sample8)]
+        if 'mun_level' in df.columns:
+            top_lvl = [x for x in df['mun_level'].unique() if 'верхнего' in str(x)]
+            if top_lvl: df = df[df['mun_level'] == top_lvl[0]]
+        yr_by_ind = df.groupby('indicator_code')['year'].max()
+        df = df.merge(yr_by_ind.rename('_mx'), left_on='indicator_code', right_index=True)
+        df = df[df['year'] == df['_mx']].drop(columns=['_mx'])
+        cov = df.groupby('indicator_code')['indicator_value'].count()
+        top = cov[cov >= 0.3 * len(sample8)].index.tolist()[:10]
+        if not top: continue
+        wide = df[df['indicator_code'].isin(top)].pivot_table(
+            index='oktmo', columns='indicator_code', values='indicator_value', aggfunc='first')
+        matched = 0
+        for oktmo8, row in wide.iterrows():
+            mo = oktmo8_to_mo.get(str(oktmo8))
+            if mo is None: continue
+            for col in wide.columns:
+                if pd.notna(row[col]):
+                    bdmo_by_mo[mo][f'{name}_{col}'] = float(row[col])
+            matched += 1
+        print(f"   {name}: {matched}/{len(sample8)} МО")
+        del df, wide; gc.collect()
+    
+    # A/B тест
+    def featurize_with_bdmo(t, j):
+        f = featurize(t, j)
+        for k, v in bdmo_by_mo.get(mos[j], {}).items():
+            f[f'bdmo_{k}'] = v
+        return f
+    
+    FC_BDMO = list(featurize_with_bdmo(T-1, 0).keys())
+    h_ab = 6; C_ab = T - 1 - h_ab
+    rows_A, rows_B, ys = [], [], []
+    for mo in sample_mos:
+        j = pos[mo]
+        for t in range(13, C_ab + 1):
+            rows_A.append(featurize(t, j))
+            rows_B.append(featurize_with_bdmo(t, j))
+            ys.append(np.log1p(Yv[t, j]))
+    X_A = pd.DataFrame(rows_A).reindex(columns=FC)
+    X_B = pd.DataFrame(rows_B).reindex(columns=FC_BDMO)
+    y = np.array(ys)
+    rows_A_te, rows_B_te, ys_te = [], [], []
+    for mo in sample_mos:
+        j = pos[mo]
+        for t in range(C_ab + 1, T):
+            rows_A_te.append(featurize(t, j))
+            rows_B_te.append(featurize_with_bdmo(t, j))
+            ys_te.append(np.log1p(Yv[t, j]))
+    X_A_te = pd.DataFrame(rows_A_te).reindex(columns=FC)
+    X_B_te = pd.DataFrame(rows_B_te).reindex(columns=FC_BDMO)
+    y_te = np.array(ys_te)
+    
+    params = dict(objective='mae', n_estimators=600, learning_rate=0.05,
+                  num_leaves=63, random_state=42, verbose=-1)
+    m_A = lgb.LGBMRegressor(**params).fit(X_A, y)
+    m_B = lgb.LGBMRegressor(**params).fit(X_B, y)
+    mae_A = np.mean(np.abs(y_te - m_A.predict(X_A_te)))
+    mae_B = np.mean(np.abs(y_te - m_B.predict(X_B_te)))
+    delta_pct = (mae_B - mae_A) / mae_A * 100
+    
+    pd.DataFrame({
+        'model': ['baseline', '+BDMO'],
+        'test_MAE_log': [mae_A, mae_B],
+        'test_MAE_exp': [np.expm1(mae_A), np.expm1(mae_B)],
+        'delta_pct': [0.0, delta_pct]
+    }).to_csv('results_final/ab_test_bdmo.csv', index=False)
+    print(f"   MAE: {delta_pct:+.2f}%  (ожидаемо: +2.22%)")
+else:
+    print(" БДПМО не распакован, пропускаем (см. data/README.md)")
+
 import subprocess, os
 os.chdir('/content/sberindex-mo-forecast-shocks')
 
