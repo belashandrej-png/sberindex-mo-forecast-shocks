@@ -147,6 +147,18 @@ foundation:
   num_samples: 20                # траекторий для uncertainty
   limit_prediction_length: false
 
+# --- Внешние данные (Росстат БДПМО) ---
+external_data:
+  bdmo:
+    enabled: false
+    source: "Росстат БДПМО v118"
+    url: "https://data.rcsi.science/data-catalog/datasets/115/"
+    sections: ["section1", "section2", "section16", "section18"]
+    oktmo_prefix_length: 8
+    top_indicators_per_section: 10
+    ab_test_result: "+2.22% MAE (ухудшение)"
+    conclusion: "статические признаки не добавляют сигнала к месячной динамике"
+
 # --- Ablation и robustness ---
 ablation:
   feature_groups:
