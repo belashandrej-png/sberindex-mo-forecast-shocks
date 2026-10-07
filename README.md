@@ -10,7 +10,7 @@
 |---|---|
 | Методологический отчет в ПДФ | [`report/report.pdf`](report/report.pdf)
 | Презентация| [`report/presentation.pdf`](report/presentation.pdf)
-| Инструкция | https://github.com/belashandrej-png/sberindex-mo-forecast-shocks#быстрый-старт
+| Инструкция по запуску | | [run_all.sh](run_all.sh) |
 | Конфигурационные файлы |  [config.yaml](config.yaml) |
 
 ### Код и воспроизводимость
