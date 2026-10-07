@@ -10,7 +10,7 @@
 |---|---|
 | Методологический отчет в ПДФ | [`report/report.pdf`](report/report.pdf)
 | Презентация| [`report/presentation.pdf`](report/presentation.pdf)
-| Инструкция по запуску | | [run_all.sh](run_all.sh) |
+| Инструкция по запуску | [run_all.sh](run_all.sh) - запуск одной командой
 | Конфигурационные файлы |  [config.yaml](config.yaml) |
 
 ### Код и воспроизводимость
