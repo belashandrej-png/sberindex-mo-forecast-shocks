@@ -9,7 +9,7 @@
 | Документ | Ссылка | Содержание |
 |---|---|---|
 | Методологический отчет в Word| [`report/report_ru.md`](report/report_ru.md) | Методология, эксперименты, интерпретации |
-| Методологический отчет в ПДФ | [`report/report_ru.pdf`](report/report_ru.pdf)
+| Методологический отчет в ПДФ | [`report/report.pdf`](report/report.pdf)
 | Презентация| [`report/presentation.pdf`](report/presentation.pdf)
 | Подписи к рисункам | [`figures/CAPTIONS.md`](figures/CAPTIONS.md) 
 
