@@ -18,7 +18,7 @@ if [ ! -f "data/hackathonlicence/consumption.parquet" ]; then
   exit 1
 fi
 
-# ИСПРАВЛЕНО: запуск .py файлов
+# запуск .py файлов
 SCRIPTS=(
   "notebooks/01_eda.py"
   "notebooks/02_forecast.py"
