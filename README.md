@@ -10,7 +10,6 @@
 |---|---|
 | Методологический отчет в ПДФ | [`report/report.pdf`](report/report.pdf)
 | Презентация| [`report/presentation.pdf`](report/presentation.pdf)
-| Подписи к рисункам | [`figures/CAPTIONS.md`](figures/CAPTIONS.md)
 | Инструкция | https://github.com/belashandrej-png/sberindex-mo-forecast-shocks#быстрый-старт
 | Конфигурационные файлы |  [config.yaml](config.yaml) |
 
