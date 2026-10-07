@@ -6,8 +6,8 @@
 ## Навигация по проекту
 
 ### Документы для конкурса
-| Документ | Ссылка | Содержание |
-|---|---|---|
+| Документ | Ссылка |
+|---|---|
 | Методологический отчет в ПДФ | [`report/report.pdf`](report/report.pdf)
 | Презентация| [`report/presentation.pdf`](report/presentation.pdf)
 | Подписи к рисункам | [`figures/CAPTIONS.md`](figures/CAPTIONS.md) 
